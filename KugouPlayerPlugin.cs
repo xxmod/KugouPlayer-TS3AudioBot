@@ -83,7 +83,7 @@ namespace KugouTs3Plugin
                 var sb = new StringBuilder();
                 sb.AppendLine("");
                 sb.AppendLine("----");
-                sb.AppendLine("搜索到的歌曲");
+                sb.AppendLine("🔍搜索到的歌曲");
                 if (top10.Count == 0)
                 {
                     sb.AppendLine("未找到匹配歌曲~");
@@ -136,7 +136,7 @@ namespace KugouTs3Plugin
                 if (string.IsNullOrWhiteSpace(playUrl))
                     return "未获取到播放链接，请尝试其他歌曲或稍后再试。";
 
-                await ts3Client.SendChannelMessage($"正在播放：{song.Artist} - {song.Title}");
+                await ts3Client.SendChannelMessage($"🎵 正在播放：{song.Artist} - {song.Title}");
                 // 使用 TS3AudioBot 的播放命令（与示例插件一致）
                 await MainCommands.CommandPlay(playManager, invoker, playUrl);
                 return null; // 已经发过提示，这里返回 null 让框架不重复发消息
@@ -148,12 +148,92 @@ namespace KugouTs3Plugin
             }
         }
 
-        [Command("kugou login")] //done
+        [Command("kugou dplay")]
+        public async Task<string> CommandDirectPlay(InvokerData invoker, params string[] args)
+        {
+            string query = string.Join(" ", args ?? Array.Empty<string>()).Trim();
+            if (string.IsNullOrWhiteSpace(query))
+                return "用法：!kugou dplay <关键词>";
+
+            try
+            {
+                // 1. 先搜索歌曲
+                var list = await SearchSongsAsync(query);
+                if (list == null || list.Count == 0)
+                {
+                    return $"未找到与 '{query}' 相关的歌曲，请尝试其他关键词。";
+                }
+
+                // 2. 取第一首歌
+                var song = list[0];
+                
+                // 3. 获取播放链接并播放
+                string playUrl = await GetSongPlayUrlAsync(song);
+                if (string.IsNullOrWhiteSpace(playUrl))
+                    return "未获取到播放链接，请尝试其他关键词或稍后再试。";
+
+                // 4. 缓存搜索结果（方便后续使用 !kugou play 命令）
+                string key = invoker.ClientUid.ToString();
+                SearchCache[key] = list.Take(10).ToList();
+
+                // 5. 播放歌曲
+                await ts3Client.SendChannelMessage($"🎵 直接播放：{song.Artist} - {song.Title}");
+                await MainCommands.CommandPlay(playManager, invoker, playUrl);
+                return null; // 已经发过提示，这里返回 null 让框架不重复发消息
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[Kugou] dplay error: {ex}");
+                return "直接播放失败：接口错误或网络异常。";
+            }
+        }
+
+        [Command("kugou add")]
+        public async Task<string> CommandAdd(InvokerData invoker, params string[] args)
+        {
+            string query = string.Join(" ", args ?? Array.Empty<string>()).Trim();
+            if (string.IsNullOrWhiteSpace(query))
+                return "用法：!kugou add <关键词>";
+
+            try
+            {
+                // 1. 先搜索歌曲
+                var list = await SearchSongsAsync(query);
+                if (list == null || list.Count == 0)
+                {
+                    return $"未找到与 '{query}' 相关的歌曲，请尝试其他关键词。";
+                }
+
+                // 2. 取第一首歌
+                var song = list[0];
+                
+                // 3. 获取播放链接
+                string playUrl = await GetSongPlayUrlAsync(song);
+                if (string.IsNullOrWhiteSpace(playUrl))
+                    return "未获取到播放链接，请尝试其他关键词或稍后再试。";
+
+                // 4. 缓存搜索结果（方便后续使用 !kugou play 命令）
+                string key = invoker.ClientUid.ToString();
+                SearchCache[key] = list.Take(10).ToList();
+
+                // 5. 添加歌曲到播放队列的下一首位置
+                await ts3Client.SendChannelMessage($"➕ 已添加到下一首：{song.Artist} - {song.Title}");
+                await MainCommands.CommandAdd(playManager, invoker, playUrl);
+                return null; // 已经发过提示，这里返回 null 让框架不重复发消息
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[Kugou] add error: {ex}");
+                return "添加歌曲失败：接口错误或网络异常。";
+            }
+        }
+
+        [Command("kugou login")]
         public async Task<string> CommandLogin(InvokerData invoker)
         {
             try
             {
-                // 1) 申请登录 key done
+                // 1) 申请登录 key 
                 var keyJson = await HttpGetJson($"{API_Address}/login/qr/key?timestamp={GetTimeStamp()}");//获取keyjson
                 string loginKey = keyJson["data"]["qrcode"].ToString();//从keyjson获取key
                 var createJson = await HttpGetJson($"{API_Address}/login/qr/create?key={Uri.EscapeDataString(loginKey)}&timestamp={GetTimeStamp()}");//获取createjson
@@ -162,7 +242,7 @@ namespace KugouTs3Plugin
                     return "登录失败：未获取到二维码 key。";
                 
 
-                // 2) 通过key使用api链接 done
+                // 2) 通过key使用api链接 
                 var qrApi = "https://api.qrtool.cn/?text=";//二维码生成api
                 var loginUrl = createJson["data"]["url"].ToString();//从createjson获取登录url
                 var qrCodeUrl =$"[URL]{qrApi}{Uri.EscapeDataString(loginUrl)}[/URL]";//生成可以直接访问的二维码链接
@@ -201,7 +281,7 @@ namespace KugouTs3Plugin
                 string filePath = Path.Combine(root, $"loginToken.txt");
                 File.WriteAllText(filePath, token ?? string.Empty);
 
-                await ts3Client.SendChannelMessage("登录成功，已保存 token。");
+                await ts3Client.SendChannelMessage("🆔登录成功：已保存 token。");
                 return null;
             }
             catch (Exception ex)
