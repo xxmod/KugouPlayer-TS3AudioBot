@@ -58,18 +58,6 @@ namespace KugouTs3Plugin
         {
             // 插件加载时的初始化逻辑（可选）
             Console.WriteLine($"[Kugou] Plugin initialized. API_Address = {API_Address}");
-            Console.WriteLine($"[Kugou] Token storage path: {GetPersistentTokenPath()}");
-            
-            // 检查是否已有保存的token
-            string existingToken = GetSavedToken();
-            if (!string.IsNullOrEmpty(existingToken))
-            {
-                Console.WriteLine("[Kugou] Found existing login token.");
-            }
-            else
-            {
-                Console.WriteLine("[Kugou] No existing login token found.");
-            }
         }
 
         // ============ 命令区 ============
@@ -320,8 +308,10 @@ namespace KugouTs3Plugin
                 await ts3Client.DeleteAvatar();
                 await ts3Client.ChangeDescription(""); // 清空描述
 
-                // 5) 保存 Token 到持久化位置
-                SaveTokenToPersistentStorage(token);
+                // 5) 保存 Token 为 loginToken.txt 到数据目录
+                string dataDir = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData); // 数据目录
+                string filePath = Path.Combine(dataDir, $"loginToken.txt");
+                File.WriteAllText(filePath, token ?? string.Empty);
 
                 await ts3Client.SendChannelMessage("🆔登录成功：已保存 token。");
                 return null;
@@ -532,8 +522,9 @@ namespace KugouTs3Plugin
         {
             try
             {
-                string filePath = GetPersistentTokenPath();
-                
+                string dataDir = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData); // 数据目录
+                string filePath = Path.Combine(dataDir, $"loginToken.txt");
+
                 if (File.Exists(filePath))
                 {
                     return File.ReadAllText(filePath).Trim();
@@ -544,81 +535,6 @@ namespace KugouTs3Plugin
                 Console.WriteLine($"[Kugou] Error reading token: {ex}");
             }
             return null;
-        }
-
-        private static void SaveTokenToPersistentStorage(string token)
-        {
-            try
-            {
-                string filePath = GetPersistentTokenPath();
-                
-                // 确保目录存在
-                string directory = Path.GetDirectoryName(filePath);
-                if (!Directory.Exists(directory))
-                {
-                    Directory.CreateDirectory(directory);
-                }
-                
-                File.WriteAllText(filePath, token ?? string.Empty);
-                Console.WriteLine($"[Kugou] Token saved to: {filePath}");
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"[Kugou] Error saving token: {ex}");
-            }
-        }
-
-        private static string GetPersistentTokenPath()
-        {
-            // 优先级：
-            // 1. 用户数据目录 (推荐)
-            // 2. 程序数据目录 (备选)
-            // 3. 临时目录 (最后备选)
-            
-            string dataDir = null;
-            
-            try
-            {
-                // 方式1: 使用用户的AppData目录 (Windows) 或 ~/.local/share (Linux)
-                dataDir = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
-                if (!string.IsNullOrEmpty(dataDir))
-                {
-                    dataDir = Path.Combine(dataDir, "TS3AudioBot", "KugouPlugin");
-                    return Path.Combine(dataDir, "loginToken.txt");
-                }
-            }
-            catch
-            {
-                // 继续尝试其他方式
-            }
-            
-            try
-            {
-                // 方式2: 使用公共应用程序数据目录
-                dataDir = Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData);
-                if (!string.IsNullOrEmpty(dataDir))
-                {
-                    dataDir = Path.Combine(dataDir, "TS3AudioBot", "KugouPlugin");
-                    return Path.Combine(dataDir, "loginToken.txt");
-                }
-            }
-            catch
-            {
-                // 继续尝试其他方式
-            }
-            
-            // 方式3: 最后备选 - 使用当前用户的临时目录
-            try
-            {
-                string tempDir = Path.GetTempPath();
-                dataDir = Path.Combine(tempDir, "TS3AudioBot_KugouPlugin");
-                return Path.Combine(dataDir, "loginToken.txt");
-            }
-            catch
-            {
-                // 最后的最后 - 使用程序目录
-                return Path.Combine(AppContext.BaseDirectory, "plugins", "kugou_loginToken.txt");
-            }
         }
 
         private static long GetTimeStamp()
