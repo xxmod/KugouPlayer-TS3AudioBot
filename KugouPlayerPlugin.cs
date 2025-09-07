@@ -58,6 +58,18 @@ namespace KugouTs3Plugin
         {
             // 插件加载时的初始化逻辑（可选）
             Console.WriteLine($"[Kugou] Plugin initialized. API_Address = {API_Address}");
+            Console.WriteLine($"[Kugou] Token storage path: {GetPersistentTokenPath()}");
+            
+            // 检查是否已有保存的token
+            string existingToken = GetSavedToken();
+            if (!string.IsNullOrEmpty(existingToken))
+            {
+                Console.WriteLine("[Kugou] Found existing login token.");
+            }
+            else
+            {
+                Console.WriteLine("[Kugou] No existing login token found.");
+            }
         }
 
         // ============ 命令区 ============
@@ -112,7 +124,7 @@ namespace KugouTs3Plugin
         [Command("kugou play")]
         public async Task<string> CommandPlay(InvokerData invoker, string indexText = null)
         {
-            string key = invoker.ClientUid.ToString(); //GetInvokerKey(invoker);
+            string key = invoker.ClientUid.ToString(); 
             if (!SearchCache.TryGetValue(key, out var lastList) || lastList == null || lastList.Count == 0)
             {
                 return "没有可播放的搜索结果，请先使用 !kugou search <关键词>。";
@@ -148,7 +160,7 @@ namespace KugouTs3Plugin
             }
         }
 
-        [Command("kugou dplay")]
+        [Command("kugou dplay")] // direct play 直接播放
         public async Task<string> CommandDirectPlay(InvokerData invoker, params string[] args)
         {
             string query = string.Join(" ", args ?? Array.Empty<string>()).Trim();
@@ -179,7 +191,7 @@ namespace KugouTs3Plugin
                 // 5. 播放歌曲
                 await ts3Client.SendChannelMessage($"🎵 直接播放：{song.Artist} - {song.Title}");
                 await MainCommands.CommandPlay(playManager, invoker, playUrl);
-                return null; // 已经发过提示，这里返回 null 让框架不重复发消息
+                return null; 
             }
             catch (Exception ex)
             {
@@ -236,19 +248,49 @@ namespace KugouTs3Plugin
                 // 1) 申请登录 key 
                 var keyJson = await HttpGetJson($"{API_Address}/login/qr/key?timestamp={GetTimeStamp()}");//获取keyjson
                 string loginKey = keyJson["data"]["qrcode"].ToString();//从keyjson获取key
+                
+                // 2) 必需的createJson请求（触发登录流程）
                 var createJson = await HttpGetJson($"{API_Address}/login/qr/create?key={Uri.EscapeDataString(loginKey)}&timestamp={GetTimeStamp()}");//获取createjson
+                
+                // 3) 获取base64格式的二维码图片
+                string base64String = keyJson["data"]["qrcode_img"]?.ToString();
                 Console.WriteLine($"[Kugou] login key: {loginKey}");
                 if (string.IsNullOrEmpty(loginKey))
                     return "登录失败：未获取到二维码 key。";
                 
-
-                // 2) 通过key使用api链接 
-                var qrApi = "https://api.qrtool.cn/?text=";//二维码生成api
-                var loginUrl = createJson["data"]["url"].ToString();//从createjson获取登录url
-                var qrCodeUrl =$"[URL]{qrApi}{Uri.EscapeDataString(loginUrl)}[/URL]";//生成可以直接访问的二维码链接
-                await ts3Client.SendChannelMessage($"请使用手机酷狗App扫码登录（扫码后请在手机上确认登录）：{qrCodeUrl}");
+                // 4) 同时提供两种二维码显示方式
+                if (!string.IsNullOrEmpty(base64String))
+                {
+                    await ts3Client.SendChannelMessage("正在生成二维码...");
+                    Console.WriteLine($"[Kugou] login qrcode: {base64String}");
+                    
+                    // 方式1：解析base64并设置为机器人头像
+                    string[] img = base64String.Split(',');
+                    if (img.Length > 1)
+                    {
+                        byte[] bytes = Convert.FromBase64String(img[1]);
+                        Stream stream = new MemoryStream(bytes);
+                        await tsFullClient.UploadAvatar(stream);
+                        stream.Dispose();
+                    }
+                    
+                    await ts3Client.ChangeDescription("请用酷狗APP扫描二维码登录");
+                }
                 
-                // 3) 轮询扫码状态
+                // 方式2：同时生成API二维码URL链接
+                var qrApi = "https://qrcode.jp/qr?q="; // 二维码生成API
+                var loginUrl = createJson["data"]["url"]?.ToString(); // 从createJson获取登录url
+                if (!string.IsNullOrEmpty(loginUrl))
+                {
+                    var qrCodeUrl = $"[URL]{qrApi}{Uri.EscapeDataString(loginUrl)}[/URL]"; // 生成可以直接访问的二维码链接
+                    await ts3Client.SendChannelMessage($"备用扫码方式：{qrCodeUrl}");
+                }
+                else
+                {
+                    await ts3Client.SendChannelMessage("请使用手机酷狗App扫码登录（扫码后请在手机上确认登录）");
+                }
+                
+                // 5) 轮询扫码状态
                 string token = null;
                 const int maxWaitSec = 120;
                 var deadline = DateTimeOffset.UtcNow.AddSeconds(maxWaitSec);
@@ -259,27 +301,27 @@ namespace KugouTs3Plugin
                     var checkRes = await HttpGetJson($"{API_Address}/login/qr/check?key={Uri.EscapeDataString(loginKey)}&timestamp={GetTimeStamp()}");
                     var status = ParseLoginStatus(checkRes);
                     Console.WriteLine($"[Kugou] login status: {status.StatusCode}");
-                    // status.StatusCode: 4(成功) / 2(已扫码待确认) / 1(待扫码) 等，具体按你的 API 文档调
+                    // status.StatusCode: 4(成功) / 2(已扫码待确认) / 1(待扫码)
                     if (status.StatusCode == 4)
                     {
                         token = status.TokenOrCookie;
                         break;
                     }
-                    //else if (status.StatusCode == 2)
-                    //{
-                        // 已扫码待确认
-                        // 可提示用户确认，避免刷屏每 5 次提示一次
-                    //}
-                    // 其它状态继续等待
                 }
 
                 if (string.IsNullOrEmpty(token))
+                {
+                    await ts3Client.DeleteAvatar();
+                    await ts3Client.ChangeDescription(""); // 清空描述
                     return "登录超时或未完成。请重试 !kugou login。";
+                }
 
-                // 4) 保存 Token 为 loginToken.txt 到根目录
-                string root = AppContext.BaseDirectory; // TS3AudioBot 运行目录
-                string filePath = Path.Combine(root, $"loginToken.txt");
-                File.WriteAllText(filePath, token ?? string.Empty);
+                // 4) 登录成功后清理头像
+                await ts3Client.DeleteAvatar();
+                await ts3Client.ChangeDescription(""); // 清空描述
+
+                // 5) 保存 Token 到持久化位置
+                SaveTokenToPersistentStorage(token);
 
                 await ts3Client.SendChannelMessage("🆔登录成功：已保存 token。");
                 return null;
@@ -475,7 +517,6 @@ namespace KugouTs3Plugin
             int code = jo["data"]["status"]?.Value<int>() ?? -1;
             status.StatusCode = code;
 
-            // 优先 token，没有则取 cookie
             string token = jo["data"]?["token"]?.ToString();
 
             status.TokenOrCookie = token;
@@ -491,8 +532,7 @@ namespace KugouTs3Plugin
         {
             try
             {
-                string root = AppContext.BaseDirectory; // TS3AudioBot 运行目录
-                string filePath = Path.Combine(root, "loginToken.txt");
+                string filePath = GetPersistentTokenPath();
                 
                 if (File.Exists(filePath))
                 {
@@ -504,6 +544,81 @@ namespace KugouTs3Plugin
                 Console.WriteLine($"[Kugou] Error reading token: {ex}");
             }
             return null;
+        }
+
+        private static void SaveTokenToPersistentStorage(string token)
+        {
+            try
+            {
+                string filePath = GetPersistentTokenPath();
+                
+                // 确保目录存在
+                string directory = Path.GetDirectoryName(filePath);
+                if (!Directory.Exists(directory))
+                {
+                    Directory.CreateDirectory(directory);
+                }
+                
+                File.WriteAllText(filePath, token ?? string.Empty);
+                Console.WriteLine($"[Kugou] Token saved to: {filePath}");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[Kugou] Error saving token: {ex}");
+            }
+        }
+
+        private static string GetPersistentTokenPath()
+        {
+            // 优先级：
+            // 1. 用户数据目录 (推荐)
+            // 2. 程序数据目录 (备选)
+            // 3. 临时目录 (最后备选)
+            
+            string dataDir = null;
+            
+            try
+            {
+                // 方式1: 使用用户的AppData目录 (Windows) 或 ~/.local/share (Linux)
+                dataDir = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+                if (!string.IsNullOrEmpty(dataDir))
+                {
+                    dataDir = Path.Combine(dataDir, "TS3AudioBot", "KugouPlugin");
+                    return Path.Combine(dataDir, "loginToken.txt");
+                }
+            }
+            catch
+            {
+                // 继续尝试其他方式
+            }
+            
+            try
+            {
+                // 方式2: 使用公共应用程序数据目录
+                dataDir = Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData);
+                if (!string.IsNullOrEmpty(dataDir))
+                {
+                    dataDir = Path.Combine(dataDir, "TS3AudioBot", "KugouPlugin");
+                    return Path.Combine(dataDir, "loginToken.txt");
+                }
+            }
+            catch
+            {
+                // 继续尝试其他方式
+            }
+            
+            // 方式3: 最后备选 - 使用当前用户的临时目录
+            try
+            {
+                string tempDir = Path.GetTempPath();
+                dataDir = Path.Combine(tempDir, "TS3AudioBot_KugouPlugin");
+                return Path.Combine(dataDir, "loginToken.txt");
+            }
+            catch
+            {
+                // 最后的最后 - 使用程序目录
+                return Path.Combine(AppContext.BaseDirectory, "plugins", "kugou_loginToken.txt");
+            }
         }
 
         private static long GetTimeStamp()
