@@ -38,7 +38,7 @@ cmd.kugou.playlist
 ### 4. 激活插件
 在 TeamSpeak 聊天中使用命令：
 ```
-!plugin load KugouPlayerPlugin
+!plugin load KugouPlayer
 ```
 
 ## 使用方法
@@ -115,4 +115,5 @@ cmd.kugou.playlist
 - 登录状态会保存在用户数据目录
 - API 服务默认运行在 `http://localhost:3000`
 - 建议先登录账号以获得更好的音质和搜索结果
+
 
