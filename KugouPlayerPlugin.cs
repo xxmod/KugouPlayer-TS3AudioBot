@@ -294,27 +294,26 @@ namespace KugouTs3Plugin
                 }
 
                 // 5) 轮询扫码状态
-                string token = null;
+                string cookieString = null;
                 const int maxWaitSec = 120;
                 var deadline = DateTimeOffset.UtcNow.AddSeconds(maxWaitSec);
 
                 while (DateTimeOffset.UtcNow < deadline)
                 {
                     await Task.Delay(1500);
-                    var checkRes = await HttpGetJson(
+                    var (statusCode, cookies) = await CheckLoginStatusWithCookies(
                         $"{API_Address}/login/qr/check?key={Uri.EscapeDataString(loginKey)}&timestamp={GetTimeStamp()}"
                     );
-                    var status = ParseLoginStatus(checkRes);
-                    Console.WriteLine($"[Kugou] login status: {status.StatusCode}");
-                    // status.StatusCode: 4(成功) / 2(已扫码待确认) / 1(待扫码)
-                    if (status.StatusCode == 4)
+                    Console.WriteLine($"[Kugou] login status: {statusCode}");
+                    // statusCode: 4(成功) / 2(已扫码待确认) / 1(待扫码)
+                    if (statusCode == 4)
                     {
-                        token = status.TokenOrCookie;
+                        cookieString = cookies;
                         break;
                     }
                 }
 
-                if (string.IsNullOrEmpty(token))
+                if (string.IsNullOrEmpty(cookieString))
                 {
                     await ts3Client.DeleteAvatar();
                     await ts3Client.ChangeDescription(""); // 清空描述
@@ -325,14 +324,14 @@ namespace KugouTs3Plugin
                 await ts3Client.DeleteAvatar();
                 await ts3Client.ChangeDescription(""); // 清空描述
 
-                // 5) 保存 Token 为 loginToken.txt 到数据目录
+                // 5) 保存完整的 Cookie 到 loginToken.txt 到数据目录
                 string dataDir = Environment.GetFolderPath(
                     Environment.SpecialFolder.ApplicationData
                 ); // 数据目录
                 string filePath = Path.Combine(dataDir, $"loginToken.txt");
-                File.WriteAllText(filePath, token ?? string.Empty);
+                File.WriteAllText(filePath, cookieString ?? string.Empty);
 
-                await ts3Client.SendChannelMessage("🆔登录成功：已保存 token。");
+                await ts3Client.SendChannelMessage("🆔登录成功：已保存 cookies。");
                 return null;
             }
             catch (Exception ex)
@@ -348,7 +347,7 @@ namespace KugouTs3Plugin
             try
             {
                 // 获取用户歌单列表
-                var playlistJson = await HttpGetJson($"{API_Address}/user/playlist", true);
+                var playlistJson = await HttpGetJson($"{API_Address}/user/playlist?timestamp={GetTimeStamp()}", true);
                 var playlists = ParseKugouPlaylistList(playlistJson);
 
                 if (playlists == null || playlists.Count == 0)
@@ -467,19 +466,19 @@ namespace KugouTs3Plugin
 
         // ============ HTTP & 解析工具 ============
 
-        private static async Task<JObject> HttpGetJson(string url, bool useToken = true)
+        private static async Task<JObject> HttpGetJson(string url, bool useCookie = true)
         {
             using var req = new HttpRequestMessage(HttpMethod.Get, url);
             // 如需 Referer / UA，可在此加 headers
             // req.Headers.Referrer = new Uri("https://www.kugou.com/");
 
-            // 如果需要使用token，则从文件读取并添加到请求头
-            if (useToken)
+            // 如果需要使用cookie，则从文件读取并添加到请求头
+            if (useCookie)
             {
-                string token = GetSavedToken();
-                if (!string.IsNullOrEmpty(token))
+                string cookies = GetSavedCookies();
+                if (!string.IsNullOrEmpty(cookies))
                 {
-                    req.Headers.Add("Cookie", $"token={token}");
+                    req.Headers.Add("Cookie", cookies);
                 }
             }
 
@@ -487,6 +486,43 @@ namespace KugouTs3Plugin
             resp.EnsureSuccessStatusCode();
             string json = await resp.Content.ReadAsStringAsync();
             return JObject.Parse(json);
+        }
+
+        private static async Task<(int statusCode, string cookies)> CheckLoginStatusWithCookies(string url)
+        {
+            using var req = new HttpRequestMessage(HttpMethod.Get, url);
+            var resp = await http.SendAsync(req);
+            resp.EnsureSuccessStatusCode();
+            string json = await resp.Content.ReadAsStringAsync();
+            var jo = JObject.Parse(json);
+            
+            var status = ParseLoginStatus(jo);
+            string cookiesString = null;
+            
+            // 如果登录成功，获取响应头中的所有cookies
+            if (status.StatusCode == 4)
+            {
+                var cookieList = new List<string>();
+                
+                // 尝试从不同的响应头中获取cookies
+                if (resp.Headers.TryGetValues("Set-Cookie", out var setCookieHeaders))
+                {
+                    cookieList.AddRange(setCookieHeaders);
+                }
+                
+                // 某些API可能使用其他头
+                if (resp.Headers.TryGetValues("Cookie", out var cookieHeaders))
+                {
+                    cookieList.AddRange(cookieHeaders);
+                }
+                
+                if (cookieList.Count > 0)
+                {
+                    cookiesString = string.Join("; ", cookieList);
+                }
+            }
+            
+            return (status.StatusCode, cookiesString);
         }
 
         private static async Task<JObject> HttpPostJson(string url, JObject body = null)
@@ -509,7 +545,7 @@ namespace KugouTs3Plugin
             // 常见：/search/song?keywords= xxx
             string url =
                 $"{API_Address}/search/song?keywords={Uri.EscapeDataString(keyword)}&pagesize=10&page=1&type=song";
-            var jo = await HttpGetJson(url, true); // 使用 token
+            var jo = await HttpGetJson(url, true); // 使用 cookie
             return ParseKugouSearchList(jo);
         }
 
@@ -743,7 +779,7 @@ namespace KugouTs3Plugin
             return invoker.ClientUid.ToString();
         }
 
-        private static string GetSavedToken()
+        private static string GetSavedCookies()
         {
             try
             {
@@ -754,14 +790,58 @@ namespace KugouTs3Plugin
 
                 if (File.Exists(filePath))
                 {
-                    return File.ReadAllText(filePath).Trim();
+                    string rawCookies = File.ReadAllText(filePath).Trim();
+                    
+                    // 处理从响应头获取的完整cookie字符串，提取有效的name=value部分
+                    if (!string.IsNullOrEmpty(rawCookies))
+                    {
+                        return CleanCookieString(rawCookies);
+                    }
                 }
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"[Kugou] Error reading token: {ex}");
+                Console.WriteLine($"[Kugou] Error reading cookies: {ex}");
             }
             return null;
+        }
+
+        private static string CleanCookieString(string rawCookies)
+        {
+            if (string.IsNullOrWhiteSpace(rawCookies))
+                return null;
+
+            var cleanedCookies = new List<string>();
+            
+            // Set-Cookie头可能包含多个独立的cookie，每个用"; "连接
+            // 但每个Set-Cookie头内部也用";"分隔属性
+            // 我们需要分别处理每个Set-Cookie头
+            var setCookieHeaders = rawCookies.Split(new[] { "; " }, StringSplitOptions.RemoveEmptyEntries);
+            
+            foreach (var setCookieHeader in setCookieHeaders)
+            {
+                // 每个Set-Cookie头的第一部分是 name=value，其余是属性
+                var parts = setCookieHeader.Split(';');
+                if (parts.Length > 0)
+                {
+                    var cookieNameValue = parts[0].Trim();
+                    
+                    // 验证这是一个有效的 name=value 格式的cookie
+                    if (cookieNameValue.Contains("=") && 
+                        !cookieNameValue.StartsWith("Path=", StringComparison.OrdinalIgnoreCase) && 
+                        !cookieNameValue.StartsWith("Domain=", StringComparison.OrdinalIgnoreCase) && 
+                        !cookieNameValue.StartsWith("Expires=", StringComparison.OrdinalIgnoreCase) &&
+                        !cookieNameValue.StartsWith("Max-Age=", StringComparison.OrdinalIgnoreCase) && 
+                        !cookieNameValue.Equals("HttpOnly", StringComparison.OrdinalIgnoreCase) &&
+                        !cookieNameValue.Equals("Secure", StringComparison.OrdinalIgnoreCase) && 
+                        !cookieNameValue.StartsWith("SameSite=", StringComparison.OrdinalIgnoreCase))
+                    {
+                        cleanedCookies.Add(cookieNameValue);
+                    }
+                }
+            }
+
+            return cleanedCookies.Count > 0 ? string.Join("; ", cleanedCookies) : null;
         }
 
         private static long GetTimeStamp()

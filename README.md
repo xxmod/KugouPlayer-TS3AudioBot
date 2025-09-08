@@ -18,12 +18,12 @@
 
 ### 1\. 下载文件
 
-* 从 [Releases](https://github.com/xxmod/KugouPlayer-TS3AudioBot/releases) 下载 `TS3AudioBot_KugouPlayer.dll` 文件
+* 从 [Releases](https://github.com/xxmod/KugouPlayer-TS3AudioBot/releases) 下载 `TS3AudioBot\\\_KugouPlayer.dll` 文件
 * 从 [KuGouMusicApi](https://github.com/MakcRe/KuGouMusicApi/releases) 下载音乐 API 服务
 
 ### 2\. 安装插件
 
-1. 将 `TS3AudioBot_KugouPlayer.dll` 放入 TS3AudioBot 的 `plugins` 文件夹中
+1. 将 `TS3AudioBot\\\_KugouPlayer.dll` 放入 TS3AudioBot 的 `plugins` 文件夹中
 2. 启动 KuGouMusicApi 服务（默认端口 3000）
 3. 在 TS3AudioBot 配置文件中添加权限设置
 
@@ -51,13 +51,13 @@ cmd.kugou.playlist
 
 
 
-#### 方法二
+##### 部署方法二
 
 
 
 ### 1\.下载文件
 
-* 从[Releases](https://github.com/xxmod/KugouPlayer-TS3AudioBot/releases)下载KugouPluginwithTS3Bot.zip
+* 从[relese](https://github.com/xxmod/KugouPlayer-TS3AudioBot/releases)下载KugouPluginwithTS3Bot.zip
 * 从[KuGouMusicApi](https://github.com/MakcRe/KuGouMusicApi/releases)下载API
 
 
@@ -158,4 +158,3 @@ cmd.kugou.playlist
 * 登录状态会保存在用户数据目录
 * API 服务默认运行在 `http://localhost:3000`
 * 建议先登录账号以获得更好的音质和搜索结果
-
