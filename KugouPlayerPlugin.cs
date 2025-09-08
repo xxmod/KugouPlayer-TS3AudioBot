@@ -6,19 +6,17 @@ using System.Net.Http;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
-
+using Newtonsoft.Json.Linq;
 // 这些命名空间与 TS3AudioBot/TS3Client 来自你的项目引用（和示例插件一致）
 using TS3AudioBot;
+using TS3AudioBot.Audio;
 using TS3AudioBot.CommandSystem;
+using TS3AudioBot.Config;
 using TS3AudioBot.Helper;
 using TS3AudioBot.Plugins;
 using TS3AudioBot.ResourceFactories;
-using TS3AudioBot.Audio;
-using TS3AudioBot.Config;
-
-using TSLib.Full;          // TsFullClient
-using TSLib;               // Ts3Client 等（根据你实际引用）
-using Newtonsoft.Json.Linq;
+using TSLib; // Ts3Client 等（根据你实际引用）
+using TSLib.Full; // TsFullClient
 
 namespace KugouTs3Plugin
 {
@@ -29,12 +27,17 @@ namespace KugouTs3Plugin
         public static string API_Address = "http://localhost:3000";
 
         // 调用方维度的搜索结果缓存（key 用调用者 UID 或者唯一标识）
-        private static readonly Dictionary<string, List<KugouSongItem>> SearchCache = new Dictionary<string, List<KugouSongItem>>();
+        private static readonly Dictionary<string, List<KugouSongItem>> SearchCache =
+            new Dictionary<string, List<KugouSongItem>>();
+
+        // 调用方维度的歌单列表缓存（key 用调用者 UID 或者唯一标识）
+        private static readonly Dictionary<string, List<KugouPlaylistItem>> PlaylistCache =
+            new Dictionary<string, List<KugouPlaylistItem>>();
 
         // HttpClient 单例
         private static readonly HttpClient http = new HttpClient()
         {
-            Timeout = TimeSpan.FromSeconds(15)
+            Timeout = TimeSpan.FromSeconds(15),
         };
 
         // 依赖注入（与示例插件一致）
@@ -76,7 +79,7 @@ namespace KugouTs3Plugin
                 var top10 = list.Take(10).ToList();
 
                 // 缓存给当前调用者
-                string key = invoker.ClientUid.ToString(); 
+                string key = invoker.ClientUid.ToString();
                 SearchCache[key] = top10;
 
                 // 输出格式
@@ -112,8 +115,12 @@ namespace KugouTs3Plugin
         [Command("kugou play")]
         public async Task<string> CommandPlay(InvokerData invoker, string indexText = null)
         {
-            string key = invoker.ClientUid.ToString(); 
-            if (!SearchCache.TryGetValue(key, out var lastList) || lastList == null || lastList.Count == 0)
+            string key = invoker.ClientUid.ToString();
+            if (
+                !SearchCache.TryGetValue(key, out var lastList)
+                || lastList == null
+                || lastList.Count == 0
+            )
             {
                 return "没有可播放的搜索结果，请先使用 !kugou search <关键词>。";
             }
@@ -166,7 +173,7 @@ namespace KugouTs3Plugin
 
                 // 2. 取第一首歌
                 var song = list[0];
-                
+
                 // 3. 获取播放链接并播放
                 string playUrl = await GetSongPlayUrlAsync(song);
                 if (string.IsNullOrWhiteSpace(playUrl))
@@ -179,7 +186,7 @@ namespace KugouTs3Plugin
                 // 5. 播放歌曲
                 await ts3Client.SendChannelMessage($"🎵 直接播放：{song.Artist} - {song.Title}");
                 await MainCommands.CommandPlay(playManager, invoker, playUrl);
-                return null; 
+                return null;
             }
             catch (Exception ex)
             {
@@ -206,7 +213,7 @@ namespace KugouTs3Plugin
 
                 // 2. 取第一首歌
                 var song = list[0];
-                
+
                 // 3. 获取播放链接
                 string playUrl = await GetSongPlayUrlAsync(song);
                 if (string.IsNullOrWhiteSpace(playUrl))
@@ -217,7 +224,9 @@ namespace KugouTs3Plugin
                 SearchCache[key] = list.Take(10).ToList();
 
                 // 5. 添加歌曲到播放队列的下一首位置
-                await ts3Client.SendChannelMessage($"➕ 已添加到下一首：{song.Artist} - {song.Title}");
+                await ts3Client.SendChannelMessage(
+                    $"➕ 已添加到下一首：{song.Artist} - {song.Title}"
+                );
                 await MainCommands.CommandAdd(playManager, invoker, playUrl);
                 return null; // 已经发过提示，这里返回 null 让框架不重复发消息
             }
@@ -233,25 +242,29 @@ namespace KugouTs3Plugin
         {
             try
             {
-                // 1) 申请登录 key 
-                var keyJson = await HttpGetJson($"{API_Address}/login/qr/key?timestamp={GetTimeStamp()}");//获取keyjson
-                string loginKey = keyJson["data"]["qrcode"].ToString();//从keyjson获取key
-                
+                // 1) 申请登录 key
+                var keyJson = await HttpGetJson(
+                    $"{API_Address}/login/qr/key?timestamp={GetTimeStamp()}"
+                ); //获取keyjson
+                string loginKey = keyJson["data"]["qrcode"].ToString(); //从keyjson获取key
+
                 // 2) 必需的createJson请求（触发登录流程）
-                var createJson = await HttpGetJson($"{API_Address}/login/qr/create?key={Uri.EscapeDataString(loginKey)}&timestamp={GetTimeStamp()}");//获取createjson
-                
+                var createJson = await HttpGetJson(
+                    $"{API_Address}/login/qr/create?key={Uri.EscapeDataString(loginKey)}&timestamp={GetTimeStamp()}"
+                ); //获取createjson
+
                 // 3) 获取base64格式的二维码图片
                 string base64String = keyJson["data"]["qrcode_img"]?.ToString();
                 Console.WriteLine($"[Kugou] login key: {loginKey}");
                 if (string.IsNullOrEmpty(loginKey))
                     return "登录失败：未获取到二维码 key。";
-                
+
                 // 4) 同时提供两种二维码显示方式
                 if (!string.IsNullOrEmpty(base64String))
                 {
                     await ts3Client.SendChannelMessage("正在生成二维码...");
                     Console.WriteLine($"[Kugou] login qrcode: {base64String}");
-                    
+
                     // 方式1：解析base64并设置为机器人头像
                     string[] img = base64String.Split(',');
                     if (img.Length > 1)
@@ -261,10 +274,10 @@ namespace KugouTs3Plugin
                         await tsFullClient.UploadAvatar(stream);
                         stream.Dispose();
                     }
-                    
+
                     await ts3Client.ChangeDescription("请用酷狗APP扫描二维码登录");
                 }
-                
+
                 // 方式2：同时生成API二维码URL链接
                 var qrApi = "https://qrcode.jp/qr?q="; // 二维码生成API
                 var loginUrl = createJson["data"]["url"]?.ToString(); // 从createJson获取登录url
@@ -275,9 +288,11 @@ namespace KugouTs3Plugin
                 }
                 else
                 {
-                    await ts3Client.SendChannelMessage("请使用手机酷狗App扫码登录（扫码后请在手机上确认登录）");
+                    await ts3Client.SendChannelMessage(
+                        "请使用手机酷狗App扫码登录（扫码后请在手机上确认登录）"
+                    );
                 }
-                
+
                 // 5) 轮询扫码状态
                 string token = null;
                 const int maxWaitSec = 120;
@@ -286,7 +301,9 @@ namespace KugouTs3Plugin
                 while (DateTimeOffset.UtcNow < deadline)
                 {
                     await Task.Delay(1500);
-                    var checkRes = await HttpGetJson($"{API_Address}/login/qr/check?key={Uri.EscapeDataString(loginKey)}&timestamp={GetTimeStamp()}");
+                    var checkRes = await HttpGetJson(
+                        $"{API_Address}/login/qr/check?key={Uri.EscapeDataString(loginKey)}&timestamp={GetTimeStamp()}"
+                    );
                     var status = ParseLoginStatus(checkRes);
                     Console.WriteLine($"[Kugou] login status: {status.StatusCode}");
                     // status.StatusCode: 4(成功) / 2(已扫码待确认) / 1(待扫码)
@@ -309,7 +326,9 @@ namespace KugouTs3Plugin
                 await ts3Client.ChangeDescription(""); // 清空描述
 
                 // 5) 保存 Token 为 loginToken.txt 到数据目录
-                string dataDir = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData); // 数据目录
+                string dataDir = Environment.GetFolderPath(
+                    Environment.SpecialFolder.ApplicationData
+                ); // 数据目录
                 string filePath = Path.Combine(dataDir, $"loginToken.txt");
                 File.WriteAllText(filePath, token ?? string.Empty);
 
@@ -323,14 +342,137 @@ namespace KugouTs3Plugin
             }
         }
 
+        [Command("kugou list")]
+        public async Task<string> CommandList(InvokerData invoker)
+        {
+            try
+            {
+                // 获取用户歌单列表
+                var playlistJson = await HttpGetJson($"{API_Address}/user/playlist", true);
+                var playlists = ParseKugouPlaylistList(playlistJson);
+
+                if (playlists == null || playlists.Count == 0)
+                {
+                    return "未找到歌单，请确保已登录并拥有歌单。";
+                }
+
+                // 缓存给当前调用者
+                string key = invoker.ClientUid.ToString();
+                PlaylistCache[key] = playlists;
+
+                // 输出格式
+                var sb = new StringBuilder();
+                sb.AppendLine("");
+                sb.AppendLine("----");
+                sb.AppendLine("📝您的歌单列表");
+                
+                for (int i = 0; i < playlists.Count; i++)
+                {
+                    var playlist = playlists[i];
+                    sb.AppendLine($"{i + 1}. {playlist.Name} ({playlist.Count}首)");
+                }
+                
+                sb.AppendLine("请输入 !kugou playlist 【序号】 播放相应歌单");
+                sb.AppendLine("----");
+
+                return sb.ToString();
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[Kugou] list error: {ex}");
+                return "获取歌单失败：接口错误或网络异常，请确保已登录。";
+            }
+        }
+
+        [Command("kugou playlist")]
+        public async Task<string> CommandPlaylist(InvokerData invoker, string indexText = null)
+        {
+            string key = invoker.ClientUid.ToString();
+            if (
+                !PlaylistCache.TryGetValue(key, out var playlistList)
+                || playlistList == null
+                || playlistList.Count == 0
+            )
+            {
+                return "没有可播放的歌单，请先使用 !kugou list 获取歌单列表。";
+            }
+
+            int index = 1; // 默认第一个歌单
+            if (!string.IsNullOrWhiteSpace(indexText))
+            {
+                if (!int.TryParse(indexText, out index) || index < 1 || index > playlistList.Count)
+                {
+                    return $"播放失败：无效的序号（1~{playlistList.Count}）。";
+                }
+            }
+
+            var playlist = playlistList[index - 1];
+
+            try
+            {
+                // 获取歌单详情
+                string url = $"{API_Address}/playlist/track/all?id={Uri.EscapeDataString(playlist.GlobalCollectionId)}";
+                Console.WriteLine($"[Kugou] Requesting playlist tracks: {url}");
+                var trackJson = await HttpGetJson(url, true);
+                var songs = ParseKugouTrackList(trackJson);
+
+                if (songs == null || songs.Count == 0)
+                {
+                    return $"歌单 '{playlist.Name}' 为空或获取失败。";
+                }
+
+                await ts3Client.SendChannelMessage($"🎵 开始播放歌单：{playlist.Name} ({songs.Count}首)");
+
+                // 播放第一首歌
+                var firstSong = songs[0];
+                string playUrl = await GetSongPlayUrlAsync(firstSong);
+                if (!string.IsNullOrWhiteSpace(playUrl))
+                {
+                    await ts3Client.SendChannelMessage($"🎵 正在播放：{firstSong.Artist} - {firstSong.Title}");
+                    await MainCommands.CommandPlay(playManager, invoker, playUrl);
+                }
+
+                // 将剩余歌曲添加到播放队列
+                for (int i = 1; i < songs.Count; i++)
+                {
+                    var song = songs[i];
+                    try
+                    {
+                        string songUrl = await GetSongPlayUrlAsync(song);
+                        if (!string.IsNullOrWhiteSpace(songUrl))
+                        {
+                            await MainCommands.CommandAdd(playManager, invoker, songUrl);
+                            await Task.Delay(500); // 避免请求过快
+                        }
+                        else
+                        {
+                            Console.WriteLine($"[Kugou] Failed to get URL for song: {song.Title}");
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"[Kugou] Error adding song {song.Title}: {ex.Message}");
+                    }
+                }
+
+                await ts3Client.SendChannelMessage($"✅ 歌单 '{playlist.Name}' 已添加到播放队列");
+                return null;
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[Kugou] playlist error: {ex}");
+                return "播放歌单失败：接口错误或网络异常。";
+            }
+        }
+
         // ============ HTTP & 解析工具 ============
 
-        private static async Task<JObject> HttpGetJson(string url, bool useToken = false)
+        private static async Task<JObject> HttpGetJson(string url, bool useToken = true)
         {
             using var req = new HttpRequestMessage(HttpMethod.Get, url);
             // 如需 Referer / UA，可在此加 headers
             // req.Headers.Referrer = new Uri("https://www.kugou.com/");
-            
+
             // 如果需要使用token，则从文件读取并添加到请求头
             if (useToken)
             {
@@ -340,7 +482,7 @@ namespace KugouTs3Plugin
                     req.Headers.Add("Cookie", $"token={token}");
                 }
             }
-            
+
             var resp = await http.SendAsync(req);
             resp.EnsureSuccessStatusCode();
             string json = await resp.Content.ReadAsStringAsync();
@@ -350,7 +492,11 @@ namespace KugouTs3Plugin
         private static async Task<JObject> HttpPostJson(string url, JObject body = null)
         {
             using var req = new HttpRequestMessage(HttpMethod.Post, url);
-            req.Content = new StringContent((body ?? new JObject()).ToString(), Encoding.UTF8, "application/json");
+            req.Content = new StringContent(
+                (body ?? new JObject()).ToString(),
+                Encoding.UTF8,
+                "application/json"
+            );
             var resp = await http.SendAsync(req);
             resp.EnsureSuccessStatusCode();
             string json = await resp.Content.ReadAsStringAsync();
@@ -361,7 +507,8 @@ namespace KugouTs3Plugin
         {
             // 根据你的 API 文档调整路径/参数：
             // 常见：/search/song?keywords= xxx
-            string url = $"{API_Address}/search/song?keywords={Uri.EscapeDataString(keyword)}&pagesize=10&page=1&type=song";
+            string url =
+                $"{API_Address}/search/song?keywords={Uri.EscapeDataString(keyword)}&pagesize=10&page=1&type=song";
             var jo = await HttpGetJson(url, true); // 使用 token
             return ParseKugouSearchList(jo);
         }
@@ -370,7 +517,8 @@ namespace KugouTs3Plugin
         {
             // 按你的服务网关调整；常见方式是通过 hash/albumId 拿到直链
             // 例如：/song/url?hash=xxx&album_id=yyy
-            string url = $"{API_Address}/song/url?hash={Uri.EscapeDataString(s.Hash ?? "")}&album_id={Uri.EscapeDataString(s.AlbumId ?? "")}&free_part=true";
+            string url =
+                $"{API_Address}/song/url?hash={Uri.EscapeDataString(s.Hash ?? "")}&album_id={Uri.EscapeDataString(s.AlbumId ?? "")}&free_part=true";
             Console.WriteLine($"[Kugou] GetSongPlayUrlAsync: {url}");
             var jo = await HttpGetJson(url);
             return ParseKugouPlayUrl(jo);
@@ -386,11 +534,11 @@ namespace KugouTs3Plugin
 
             // 获取搜索结果数组，优先使用 data.lists，兼容其他可能的结构
             JToken arr =
-                jo.SelectToken("data.lists") ??
-                jo.SelectToken("data.list") ??
-                jo.SelectToken("result.songs") ??
-                jo.SelectToken("songs") ??
-                jo.SelectToken("data.songs");
+                jo.SelectToken("data.lists")
+                ?? jo.SelectToken("data.list")
+                ?? jo.SelectToken("result.songs")
+                ?? jo.SelectToken("songs")
+                ?? jo.SelectToken("data.songs");
 
             if (arr is JArray ja)
             {
@@ -412,16 +560,16 @@ namespace KugouTs3Plugin
                     // 提取歌手名
                     string artist = it.Value<string>("SingerName");
 
-                    // 提取 Hash，优先级：SQ.Hash > HQ.Hash > FileHash
+                    // 提取 Hash，优先级：HQ.Hash > SQ.Hash > FileHash
                     string hash = null;
                     var sqHash = it.SelectToken("SQ.Hash")?.ToString();
                     var hqHash = it.SelectToken("HQ.Hash")?.ToString();
                     var fileHash = it.Value<string>("FileHash");
 
-                    if (!string.IsNullOrWhiteSpace(sqHash))
-                        hash = sqHash;
-                    else if (!string.IsNullOrWhiteSpace(hqHash))
+                    if (!string.IsNullOrWhiteSpace(hqHash))
                         hash = hqHash;
+                    else if (!string.IsNullOrWhiteSpace(sqHash))
+                        hash = sqHash;
                     else
                         hash = fileHash;
 
@@ -432,13 +580,15 @@ namespace KugouTs3Plugin
                     if (string.IsNullOrWhiteSpace(title) && string.IsNullOrWhiteSpace(artist))
                         continue;
 
-                    list.Add(new KugouSongItem
-                    {
-                        Title = title?.Trim() ?? "未知标题",
-                        Artist = artist?.Trim() ?? "未知歌手",
-                        Hash = hash?.Trim(),
-                        AlbumId = albumId?.Trim()
-                    });
+                    list.Add(
+                        new KugouSongItem
+                        {
+                            Title = title?.Trim() ?? "未知标题",
+                            Artist = artist?.Trim() ?? "未知歌手",
+                            Hash = hash?.Trim(),
+                            AlbumId = albumId?.Trim(),
+                        }
+                    );
                 }
             }
 
@@ -449,7 +599,7 @@ namespace KugouTs3Plugin
         {
             // 根据实际返回的 JSON 结构解析播放 URL
             // 优先级：url 数组 > backupUrl 数组 > 其他兼容字段
-            
+
             // 1. 优先使用 "url" 数组中的第一个地址
             var urlArray = jo.SelectToken("url") as JArray;
             if (urlArray != null && urlArray.Count > 0)
@@ -458,7 +608,7 @@ namespace KugouTs3Plugin
                 if (!string.IsNullOrWhiteSpace(firstUrl))
                     return firstUrl;
             }
-            
+
             // 2. 如果 url 数组为空或无效，尝试 "backupUrl" 数组
             var backupUrlArray = jo.SelectToken("backupUrl") as JArray;
             if (backupUrlArray != null && backupUrlArray.Count > 0)
@@ -467,13 +617,13 @@ namespace KugouTs3Plugin
                 if (!string.IsNullOrWhiteSpace(firstBackupUrl))
                     return firstBackupUrl;
             }
-            
+
             // 3. 兼容旧的 JSON 结构
             var token =
-                jo.SelectToken("data.play_url") ??
-                jo.SelectToken("data.url") ??
-                jo.SelectToken("url") ??
-                jo.SelectToken("data.data.play_url");
+                jo.SelectToken("data.play_url")
+                ?? jo.SelectToken("data.url")
+                ?? jo.SelectToken("url")
+                ?? jo.SelectToken("data.data.play_url");
 
             return token?.ToString();
         }
@@ -482,10 +632,10 @@ namespace KugouTs3Plugin
         {
             // 常见返回：{ "data": { "key": "xxxx" } } 或 { "data": { "unikey": "xxxx" } }
             var t =
-                jo.SelectToken("data.key") ??
-                jo.SelectToken("data.unikey") ??
-                jo.SelectToken("key") ??
-                jo.SelectToken("unikey");
+                jo.SelectToken("data.key")
+                ?? jo.SelectToken("data.unikey")
+                ?? jo.SelectToken("key")
+                ?? jo.SelectToken("unikey");
             return t?.ToString();
         }
 
@@ -493,11 +643,86 @@ namespace KugouTs3Plugin
         {
             // 常见返回：{ "data": { "qrimg": "data:image/png;base64,..." } } 或 { "data": { "image": "..." } }
             var t =
-                jo.SelectToken("data.qrimg") ??
-                jo.SelectToken("data.image") ??
-                jo.SelectToken("qrimg") ??
-                jo.SelectToken("image");
+                jo.SelectToken("data.qrimg")
+                ?? jo.SelectToken("data.image")
+                ?? jo.SelectToken("qrimg")
+                ?? jo.SelectToken("image");
             return t?.ToString();
+        }
+
+        private static List<KugouPlaylistItem> ParseKugouPlaylistList(JObject jo)
+        {
+            // 根据playlist.json解析歌单列表
+            var list = new List<KugouPlaylistItem>();
+
+            JToken arr = jo.SelectToken("data.info");
+
+            if (arr is JArray ja)
+            {
+                foreach (var it in ja)
+                {
+                    string name = it.Value<string>("name");
+                    string globalCollectionId = it.Value<string>("global_collection_id");
+                    int count = it.Value<int>("count");
+
+                    if (!string.IsNullOrWhiteSpace(name) && !string.IsNullOrWhiteSpace(globalCollectionId))
+                    {
+                        list.Add(new KugouPlaylistItem
+                        {
+                            Name = name,
+                            GlobalCollectionId = globalCollectionId,
+                            Count = count
+                        });
+                    }
+                }
+            }
+
+            return list;
+        }
+
+        private static List<KugouSongItem> ParseKugouTrackList(JObject jo)
+        {
+            // 根据track.json解析歌单中的歌曲列表
+            var list = new List<KugouSongItem>();
+
+            JToken arr = jo.SelectToken("data.songs");
+
+            if (arr is JArray ja)
+            {
+                foreach (var it in ja)
+                {
+                    string name = it.Value<string>("name");
+                    string hash = it.Value<string>("hash");
+                    string albumId = it.Value<string>("album_id");
+
+                    // 从name字段中提取歌手和歌曲名 (格式通常是 "歌手 - 歌曲名")
+                    string artist = "";
+                    string title = name;
+
+                    if (!string.IsNullOrWhiteSpace(name) && name.Contains(" - "))
+                    {
+                        var parts = name.Split(new[] { " - " }, 2, StringSplitOptions.None);
+                        if (parts.Length == 2)
+                        {
+                            artist = parts[0].Trim();
+                            title = parts[1].Trim();
+                        }
+                    }
+
+                    if (!string.IsNullOrWhiteSpace(hash) && !string.IsNullOrWhiteSpace(albumId))
+                    {
+                        list.Add(new KugouSongItem
+                        {
+                            Title = title,
+                            Artist = artist,
+                            Hash = hash,
+                            AlbumId = albumId
+                        });
+                    }
+                }
+            }
+
+            return list;
         }
 
         private static LoginStatus ParseLoginStatus(JObject jo)
@@ -522,7 +747,9 @@ namespace KugouTs3Plugin
         {
             try
             {
-                string dataDir = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData); // 数据目录
+                string dataDir = Environment.GetFolderPath(
+                    Environment.SpecialFolder.ApplicationData
+                ); // 数据目录
                 string filePath = Path.Combine(dataDir, $"loginToken.txt");
 
                 if (File.Exists(filePath))
@@ -550,6 +777,13 @@ namespace KugouTs3Plugin
             public string Artist { get; set; }
             public string Hash { get; set; }
             public string AlbumId { get; set; }
+        }
+
+        private class KugouPlaylistItem
+        {
+            public string Name { get; set; }
+            public string GlobalCollectionId { get; set; }
+            public int Count { get; set; }
         }
 
         private class LoginStatus
