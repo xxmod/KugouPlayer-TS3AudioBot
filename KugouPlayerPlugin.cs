@@ -74,7 +74,13 @@ namespace KugouTs3Plugin
 
             try
             {
-                var list = await SearchSongsAsync(query);
+                // 优先尝试VIP搜索，失败则使用普通搜索
+                var list = await SearchSongsAsync(query, null, true);
+                if (list == null || list.Count == 0)
+                {
+                    list = await SearchSongsAsync(query, null, false);
+                }
+                
                 // 只取前 10
                 var top10 = list.Take(10).ToList();
 
@@ -138,12 +144,20 @@ namespace KugouTs3Plugin
 
             try
             {
-                // 根据 hash/albumId 取真实播放 URL（根据你的 API 文档调整）
-                string playUrl = await GetSongPlayUrlAsync(song);
+                // 优先尝试VIP播放，失败则降级到普通播放
+                string playUrl = await GetSongPlayUrlAsync(song, true);
+                bool isVipPlay = !string.IsNullOrWhiteSpace(playUrl);
+                
+                if (string.IsNullOrWhiteSpace(playUrl))
+                {
+                    playUrl = await GetSongPlayUrlAsync(song, false);
+                }
+                
                 if (string.IsNullOrWhiteSpace(playUrl))
                     return "未获取到播放链接，请尝试其他歌曲或稍后再试。";
 
-                await ts3Client.SendChannelMessage($"🎵 正在播放：{song.Artist} - {song.Title}");
+                string playMode = isVipPlay ? "👑VIP" : "🎵";
+                await ts3Client.SendChannelMessage($"{playMode} 正在播放：{song.Artist} - {song.Title}");
                 // 使用 TS3AudioBot 的播放命令（与示例插件一致）
                 await MainCommands.CommandPlay(playManager, invoker, playUrl);
                 return null; // 已经发过提示，这里返回 null 让框架不重复发消息
@@ -164,8 +178,13 @@ namespace KugouTs3Plugin
 
             try
             {
-                // 1. 先搜索歌曲
-                var list = await SearchSongsAsync(query);
+                // 1. 先搜索歌曲（优先尝试VIP搜索）
+                var list = await SearchSongsAsync(query, null, true);
+                if (list == null || list.Count == 0)
+                {
+                    list = await SearchSongsAsync(query, null, false);
+                }
+                
                 if (list == null || list.Count == 0)
                 {
                     return $"未找到与 '{query}' 相关的歌曲，请尝试其他关键词。";
@@ -174,8 +193,15 @@ namespace KugouTs3Plugin
                 // 2. 取第一首歌
                 var song = list[0];
 
-                // 3. 获取播放链接并播放
-                string playUrl = await GetSongPlayUrlAsync(song);
+                // 3. 获取播放链接并播放（优先尝试VIP）
+                string playUrl = await GetSongPlayUrlAsync(song, true);
+                bool isVipPlay = !string.IsNullOrWhiteSpace(playUrl);
+                
+                if (string.IsNullOrWhiteSpace(playUrl))
+                {
+                    playUrl = await GetSongPlayUrlAsync(song, false);
+                }
+                
                 if (string.IsNullOrWhiteSpace(playUrl))
                     return "未获取到播放链接，请尝试其他关键词或稍后再试。";
 
@@ -184,7 +210,8 @@ namespace KugouTs3Plugin
                 SearchCache[key] = list.Take(10).ToList();
 
                 // 5. 播放歌曲
-                await ts3Client.SendChannelMessage($"🎵 直接播放：{song.Artist} - {song.Title}");
+                string playMode = isVipPlay ? "👑VIP" : "🎵";
+                await ts3Client.SendChannelMessage($"{playMode} 直接播放：{song.Artist} - {song.Title}");
                 await MainCommands.CommandPlay(playManager, invoker, playUrl);
                 return null;
             }
@@ -204,8 +231,13 @@ namespace KugouTs3Plugin
 
             try
             {
-                // 1. 先搜索歌曲
-                var list = await SearchSongsAsync(query);
+                // 1. 先搜索歌曲（优先尝试VIP搜索）
+                var list = await SearchSongsAsync(query, null, true);
+                if (list == null || list.Count == 0)
+                {
+                    list = await SearchSongsAsync(query, null, false);
+                }
+                
                 if (list == null || list.Count == 0)
                 {
                     return $"未找到与 '{query}' 相关的歌曲，请尝试其他关键词。";
@@ -214,8 +246,15 @@ namespace KugouTs3Plugin
                 // 2. 取第一首歌
                 var song = list[0];
 
-                // 3. 获取播放链接
-                string playUrl = await GetSongPlayUrlAsync(song);
+                // 3. 获取播放链接（优先尝试VIP）
+                string playUrl = await GetSongPlayUrlAsync(song, true);
+                bool isVipAdd = !string.IsNullOrWhiteSpace(playUrl);
+                
+                if (string.IsNullOrWhiteSpace(playUrl))
+                {
+                    playUrl = await GetSongPlayUrlAsync(song, false);
+                }
+                
                 if (string.IsNullOrWhiteSpace(playUrl))
                     return "未获取到播放链接，请尝试其他关键词或稍后再试。";
 
@@ -224,8 +263,9 @@ namespace KugouTs3Plugin
                 SearchCache[key] = list.Take(10).ToList();
 
                 // 5. 添加歌曲到播放队列的下一首位置
+                string addMode = isVipAdd ? "👑VIP" : "➕";
                 await ts3Client.SendChannelMessage(
-                    $"➕ 已添加到下一首：{song.Artist} - {song.Title}"
+                    $"{addMode} 已添加到下一首：{song.Artist} - {song.Title}"
                 );
                 await MainCommands.CommandAdd(playManager, invoker, playUrl);
                 return null; // 已经发过提示，这里返回 null 让框架不重复发消息
@@ -324,11 +364,12 @@ namespace KugouTs3Plugin
                 await ts3Client.DeleteAvatar();
                 await ts3Client.ChangeDescription(""); // 清空描述
 
-                // 5) 保存完整的 Cookie 到 loginToken.txt 到数据目录
+                // 5) 保存完整的 Cookie 到对应TS用户的loginToken文件
+                string tsId = invoker.ClientUid.ToString();
                 string dataDir = Environment.GetFolderPath(
                     Environment.SpecialFolder.ApplicationData
-                ); // 数据目录
-                string filePath = Path.Combine(dataDir, $"loginToken.txt");
+                );
+                string filePath = Path.Combine(dataDir, $"{tsId}_loginToken.txt");
                 File.WriteAllText(filePath, cookieString ?? string.Empty);
 
                 await ts3Client.SendChannelMessage("🆔登录成功：已保存 cookies。");
@@ -341,13 +382,118 @@ namespace KugouTs3Plugin
             }
         }
 
+        [Command("kugou vip")]
+        public async Task<string> CommandVipLogin(InvokerData invoker)
+        {
+            try
+            {
+                // 1) 申请登录 key
+                var keyJson = await HttpGetJson(
+                    $"{API_Address}/login/qr/key?timestamp={GetTimeStamp()}"
+                ); //获取keyjson
+                string loginKey = keyJson["data"]["qrcode"].ToString(); //从keyjson获取key
+
+                // 2) 必需的createJson请求（触发登录流程）
+                var createJson = await HttpGetJson(
+                    $"{API_Address}/login/qr/create?key={Uri.EscapeDataString(loginKey)}&timestamp={GetTimeStamp()}"
+                ); //获取createjson
+
+                // 3) 获取base64格式的二维码图片
+                string base64String = keyJson["data"]["qrcode_img"]?.ToString();
+                Console.WriteLine($"[Kugou] vip login key: {loginKey}");
+                if (string.IsNullOrEmpty(loginKey))
+                    return "VIP登录失败：未获取到二维码 key。";
+
+                // 4) 同时提供两种二维码显示方式
+                if (!string.IsNullOrEmpty(base64String))
+                {
+                    await ts3Client.SendChannelMessage("正在生成VIP登录二维码...");
+                    Console.WriteLine($"[Kugou] vip login qrcode: {base64String}");
+
+                    // 方式1：解析base64并设置为机器人头像
+                    string[] img = base64String.Split(',');
+                    if (img.Length > 1)
+                    {
+                        byte[] bytes = Convert.FromBase64String(img[1]);
+                        Stream stream = new MemoryStream(bytes);
+                        await tsFullClient.UploadAvatar(stream);
+                        stream.Dispose();
+                    }
+
+                    await ts3Client.ChangeDescription("请用酷狗VIP账号扫描二维码登录");
+                }
+
+                // 方式2：同时生成API二维码URL链接
+                var qrApi = "https://qrcode.jp/qr?q="; // 二维码生成API
+                var loginUrl = createJson["data"]["url"]?.ToString(); // 从createJson获取登录url
+                if (!string.IsNullOrEmpty(loginUrl))
+                {
+                    var qrCodeUrl = $"[URL]{qrApi}{Uri.EscapeDataString(loginUrl)}[/URL]"; // 生成可以直接访问的二维码链接
+                    await ts3Client.SendChannelMessage($"VIP备用扫码方式：{qrCodeUrl}");
+                }
+                else
+                {
+                    await ts3Client.SendChannelMessage(
+                        "请使用手机酷狗VIP账号扫码登录（扫码后请在手机上确认登录）"
+                    );
+                }
+
+                // 5) 轮询扫码状态
+                string cookieString = null;
+                const int maxWaitSec = 120;
+                var deadline = DateTimeOffset.UtcNow.AddSeconds(maxWaitSec);
+
+                while (DateTimeOffset.UtcNow < deadline)
+                {
+                    await Task.Delay(1500);
+                    var (statusCode, cookies) = await CheckLoginStatusWithCookies(
+                        $"{API_Address}/login/qr/check?key={Uri.EscapeDataString(loginKey)}&timestamp={GetTimeStamp()}"
+                    );
+                    Console.WriteLine($"[Kugou] vip login status: {statusCode}");
+                    // statusCode: 4(成功) / 2(已扫码待确认) / 1(待扫码)
+                    if (statusCode == 4)
+                    {
+                        cookieString = cookies;
+                        break;
+                    }
+                }
+
+                if (string.IsNullOrEmpty(cookieString))
+                {
+                    await ts3Client.DeleteAvatar();
+                    await ts3Client.ChangeDescription(""); // 清空描述
+                    return "VIP登录超时或未完成。请重试 !kugou vip。";
+                }
+
+                // 4) 登录成功后清理头像
+                await ts3Client.DeleteAvatar();
+                await ts3Client.ChangeDescription(""); // 清空描述
+
+                // 5) 保存完整的 Cookie 到 vipToken.txt 到数据目录
+                string dataDir = Environment.GetFolderPath(
+                    Environment.SpecialFolder.ApplicationData
+                );
+                string filePath = Path.Combine(dataDir, "vipToken.txt");
+                File.WriteAllText(filePath, cookieString ?? string.Empty);
+
+                await ts3Client.SendChannelMessage("👑VIP登录成功：已保存VIP cookies。");
+                return null;
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[Kugou] vip login error: {ex}");
+                return "VIP登录失败：接口错误或网络异常。";
+            }
+        }
+
         [Command("kugou list")]
         public async Task<string> CommandList(InvokerData invoker)
         {
             try
             {
-                // 获取用户歌单列表
-                var playlistJson = await HttpGetJson($"{API_Address}/user/playlist?timestamp={GetTimeStamp()}", true);
+                // 获取用户歌单列表，使用对应TS用户的cookie
+                string tsId = invoker.ClientUid.ToString();
+                var playlistJson = await HttpGetJson($"{API_Address}/user/playlist?timestamp={GetTimeStamp()}", true, tsId, false);
                 var playlists = ParseKugouPlaylistList(playlistJson);
 
                 if (playlists == null || playlists.Count == 0)
@@ -409,10 +555,11 @@ namespace KugouTs3Plugin
 
             try
             {
-                // 获取歌单详情
+                // 获取歌单详情，使用对应TS用户的cookie
+                string tsId = invoker.ClientUid.ToString();
                 string url = $"{API_Address}/playlist/track/all?id={Uri.EscapeDataString(playlist.GlobalCollectionId)}";
                 Console.WriteLine($"[Kugou] Requesting playlist tracks: {url}");
-                var trackJson = await HttpGetJson(url, true);
+                var trackJson = await HttpGetJson(url, true, tsId, false);
                 var songs = ParseKugouTrackList(trackJson);
 
                 if (songs == null || songs.Count == 0)
@@ -422,22 +569,36 @@ namespace KugouTs3Plugin
 
                 await ts3Client.SendChannelMessage($"🎵 开始播放歌单：{playlist.Name} ({songs.Count}首)");
 
-                // 播放第一首歌
+                // 播放第一首歌（优先尝试VIP）
                 var firstSong = songs[0];
-                string playUrl = await GetSongPlayUrlAsync(firstSong);
+                string playUrl = await GetSongPlayUrlAsync(firstSong, true);
+                bool isVipPlaylist = !string.IsNullOrWhiteSpace(playUrl);
+                
+                if (string.IsNullOrWhiteSpace(playUrl))
+                {
+                    playUrl = await GetSongPlayUrlAsync(firstSong, false);
+                }
+                
                 if (!string.IsNullOrWhiteSpace(playUrl))
                 {
-                    await ts3Client.SendChannelMessage($"🎵 正在播放：{firstSong.Artist} - {firstSong.Title}");
+                    string playMode = isVipPlaylist ? "👑VIP" : "🎵";
+                    await ts3Client.SendChannelMessage($"{playMode} 正在播放：{firstSong.Artist} - {firstSong.Title}");
                     await MainCommands.CommandPlay(playManager, invoker, playUrl);
                 }
 
-                // 将剩余歌曲添加到播放队列
+                // 将剩余歌曲添加到播放队列（优先尝试VIP）
                 for (int i = 1; i < songs.Count; i++)
                 {
                     var song = songs[i];
                     try
                     {
-                        string songUrl = await GetSongPlayUrlAsync(song);
+                        string songUrl = await GetSongPlayUrlAsync(song, isVipPlaylist);
+                        if (string.IsNullOrWhiteSpace(songUrl) && isVipPlaylist)
+                        {
+                            // VIP失败，尝试普通模式
+                            songUrl = await GetSongPlayUrlAsync(song, false);
+                        }
+                        
                         if (!string.IsNullOrWhiteSpace(songUrl))
                         {
                             await MainCommands.CommandAdd(playManager, invoker, songUrl);
@@ -454,7 +615,8 @@ namespace KugouTs3Plugin
                     }
                 }
 
-                await ts3Client.SendChannelMessage($"✅ 歌单 '{playlist.Name}' 已添加到播放队列");
+                string playlistMode = isVipPlaylist ? "👑VIP" : "✅";
+                await ts3Client.SendChannelMessage($"{playlistMode} 歌单 '{playlist.Name}' 已添加到播放队列");
                 return null;
             }
             catch (Exception ex)
@@ -466,7 +628,7 @@ namespace KugouTs3Plugin
 
         // ============ HTTP & 解析工具 ============
 
-        private static async Task<JObject> HttpGetJson(string url, bool useCookie = true)
+        private static async Task<JObject> HttpGetJson(string url, bool useCookie = true, string tsId = null, bool useVip = false)
         {
             using var req = new HttpRequestMessage(HttpMethod.Get, url);
             // 如需 Referer / UA，可在此加 headers
@@ -475,7 +637,7 @@ namespace KugouTs3Plugin
             // 如果需要使用cookie，则从文件读取并添加到请求头
             if (useCookie)
             {
-                string cookies = GetSavedCookies();
+                string cookies = GetSavedCookies(tsId, useVip);
                 if (!string.IsNullOrEmpty(cookies))
                 {
                     req.Headers.Add("Cookie", cookies);
@@ -539,24 +701,24 @@ namespace KugouTs3Plugin
             return JObject.Parse(json);
         }
 
-        private static async Task<List<KugouSongItem>> SearchSongsAsync(string keyword)
+        private static async Task<List<KugouSongItem>> SearchSongsAsync(string keyword, string tsId = null, bool useVip = false)
         {
             // 根据你的 API 文档调整路径/参数：
             // 常见：/search/song?keywords= xxx
             string url =
                 $"{API_Address}/search/song?keywords={Uri.EscapeDataString(keyword)}&pagesize=10&page=1&type=song";
-            var jo = await HttpGetJson(url, true); // 使用 cookie
+            var jo = await HttpGetJson(url, true, tsId, useVip); // 使用对应的cookie
             return ParseKugouSearchList(jo);
         }
 
-        private static async Task<string> GetSongPlayUrlAsync(KugouSongItem s)
+        private static async Task<string> GetSongPlayUrlAsync(KugouSongItem s, bool useVip = false)
         {
             // 按你的服务网关调整；常见方式是通过 hash/albumId 拿到直链
             // 例如：/song/url?hash=xxx&album_id=yyy
             string url =
-                $"{API_Address}/song/url?hash={Uri.EscapeDataString(s.Hash ?? "")}&album_id={Uri.EscapeDataString(s.AlbumId ?? "")}&free_part=true";
+                $"{API_Address}/song/url?hash={Uri.EscapeDataString(s.Hash ?? "")}&album_id={Uri.EscapeDataString(s.AlbumId ?? "")}&free_part=true&timestamp={GetTimeStamp()}";
             Console.WriteLine($"[Kugou] GetSongPlayUrlAsync: {url}");
-            var jo = await HttpGetJson(url);
+            var jo = await HttpGetJson(url, true, null, useVip);
             return ParseKugouPlayUrl(jo);
         }
 
@@ -779,14 +941,38 @@ namespace KugouTs3Plugin
             return invoker.ClientUid.ToString();
         }
 
-        private static string GetSavedCookies()
+        private static string GetSavedCookies(string tsId = null, bool useVip = false)
         {
             try
             {
                 string dataDir = Environment.GetFolderPath(
                     Environment.SpecialFolder.ApplicationData
-                ); // 数据目录
-                string filePath = Path.Combine(dataDir, $"loginToken.txt");
+                );
+                
+                string fileName;
+                if (useVip)
+                {
+                    fileName = "vipToken.txt";
+                }
+                else if (!string.IsNullOrEmpty(tsId))
+                {
+                    fileName = $"{tsId}_loginToken.txt";
+                }
+                else
+                {
+                    // 兼容旧版本，优先使用vip token
+                    string vipPath = Path.Combine(dataDir, "vipToken.txt");
+                    if (File.Exists(vipPath))
+                    {
+                        fileName = "vipToken.txt";
+                    }
+                    else
+                    {
+                        fileName = "loginToken.txt"; // 旧版本兼容
+                    }
+                }
+
+                string filePath = Path.Combine(dataDir, fileName);
 
                 if (File.Exists(filePath))
                 {

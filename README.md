@@ -39,6 +39,7 @@ cmd.kugou.add
 cmd.kugou.login
 cmd.kugou.list
 cmd.kugou.playlist
+cmd.kugou.vip
 ```
 
 ### 4\. 激活插件
@@ -81,6 +82,13 @@ cmd.kugou.playlist
 * 机器人会显示二维码（通过头像）
 * 使用酷狗 APP 扫码登录
 * 登录状态会自动保存
+
+```
+!kugou vip
+```
+* 与login方法一致
+* 但是会在播放时优先使用vip的cookie
+* 达到可以用带vip的账号播放自己的音乐
 
 ### 搜索音乐
 
