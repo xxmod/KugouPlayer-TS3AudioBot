@@ -517,7 +517,8 @@ namespace KugouTs3Plugin
                     sb.AppendLine($"{i + 1}. {playlist.Name} ({playlist.Count}首)");
                 }
                 
-                sb.AppendLine("请输入 !kugou playlist 【序号】 播放相应歌单");
+                sb.AppendLine("请输入 !kugou playlist 【序号】 [模式] 播放相应歌单");
+                sb.AppendLine("模式参数：0或空=顺序播放，1=随机播放");
                 sb.AppendLine("----");
 
                 return sb.ToString();
@@ -530,7 +531,7 @@ namespace KugouTs3Plugin
         }
 
         [Command("kugou playlist")]
-        public async Task<string> CommandPlaylist(InvokerData invoker, string indexText = null)
+        public async Task<string> CommandPlaylist(InvokerData invoker, string indexText = null, string modeText = null)
         {
             string key = invoker.ClientUid.ToString();
             if (
@@ -551,6 +552,16 @@ namespace KugouTs3Plugin
                 }
             }
 
+            // 解析播放模式：0或空 = 顺序播放，1 = 随机播放
+            bool isRandomMode = false;
+            if (!string.IsNullOrWhiteSpace(modeText))
+            {
+                if (int.TryParse(modeText, out int mode))
+                {
+                    isRandomMode = (mode == 1);
+                }
+            }
+
             var playlist = playlistList[index - 1];
 
             try
@@ -567,7 +578,22 @@ namespace KugouTs3Plugin
                     return $"歌单 '{playlist.Name}' 为空或获取失败。";
                 }
 
-                await ts3Client.SendChannelMessage($"🎵 开始播放歌单：{playlist.Name} ({songs.Count}首)");
+                // 根据模式处理歌曲列表
+                string modeDisplayText = isRandomMode ? "🔀随机" : "▶️顺序";
+                if (isRandomMode)
+                {
+                    // 使用 Fisher-Yates 洗牌算法打乱歌曲顺序
+                    var random = new Random();
+                    for (int i = songs.Count - 1; i > 0; i--)
+                    {
+                        int j = random.Next(0, i + 1);
+                        var temp = songs[i];
+                        songs[i] = songs[j];
+                        songs[j] = temp;
+                    }
+                }
+
+                await ts3Client.SendChannelMessage($"🎵 开始{modeDisplayText}播放歌单：{playlist.Name} ({songs.Count}首)");
 
                 // 播放第一首歌（优先尝试VIP）
                 var firstSong = songs[0];
@@ -616,7 +642,8 @@ namespace KugouTs3Plugin
                 }
 
                 string playlistMode = isVipPlaylist ? "👑VIP" : "✅";
-                await ts3Client.SendChannelMessage($"{playlistMode} 歌单 '{playlist.Name}' 已添加到播放队列");
+                string finalModeText = isRandomMode ? "随机" : "顺序";
+                await ts3Client.SendChannelMessage($"{playlistMode} 歌单 '{playlist.Name}' 已{finalModeText}添加到播放队列");
                 return null;
             }
             catch (Exception ex)
