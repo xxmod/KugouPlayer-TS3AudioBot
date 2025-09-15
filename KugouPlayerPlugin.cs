@@ -566,12 +566,9 @@ namespace KugouTs3Plugin
 
             try
             {
-                // 获取歌单详情，使用对应TS用户的cookie
+                // 获取歌单详情，使用对应TS用户的cookie，支持分页获取所有歌曲
                 string tsId = invoker.ClientUid.ToString();
-                string url = $"{API_Address}/playlist/track/all?id={Uri.EscapeDataString(playlist.GlobalCollectionId)}";
-                Console.WriteLine($"[Kugou] Requesting playlist tracks: {url}");
-                var trackJson = await HttpGetJson(url, true, tsId, false);
-                var songs = ParseKugouTrackList(trackJson);
+                var songs = await GetAllPlaylistTracksAsync(playlist.GlobalCollectionId, tsId);
 
                 if (songs == null || songs.Count == 0)
                 {
@@ -948,6 +945,70 @@ namespace KugouTs3Plugin
             }
 
             return list;
+        }
+
+        private async Task<List<KugouSongItem>> GetAllPlaylistTracksAsync(string playlistId, string tsId)
+        {
+            var allSongs = new List<KugouSongItem>();
+            int pageSize = 30; // 每页30首歌
+            int currentPage = 1;
+            int totalCount = 0;
+            bool firstPage = true;
+
+            while (true)
+            {
+                try
+                {
+                    string url = $"{API_Address}/playlist/track/all?id={Uri.EscapeDataString(playlistId)}&page={currentPage}";
+                    Console.WriteLine($"[Kugou] Requesting playlist tracks page {currentPage}: {url}");
+                    
+                    var trackJson = await HttpGetJson(url, true, tsId, false);
+                    if (trackJson == null)
+                    {
+                        Console.WriteLine($"[Kugou] 获取歌单第 {currentPage} 页歌曲时出错");
+                        break;
+                    }
+
+                    // 如果是第一页，获取总数量
+                    if (firstPage)
+                    {
+                        totalCount = trackJson["data"]?["count"]?.Value<int>() ?? 0;
+                        Console.WriteLine($"[Kugou] 歌单总歌曲数: {totalCount}");
+                        firstPage = false;
+                        
+                        if (totalCount == 0)
+                        {
+                            break;
+                        }
+                    }
+
+                    var songs = ParseKugouTrackList(trackJson);
+                    if (songs == null || songs.Count == 0)
+                    {
+                        Console.WriteLine($"[Kugou] 这一页没有歌曲 {currentPage}");
+                        break;
+                    }
+
+                    allSongs.AddRange(songs);
+                    Console.WriteLine($"[Kugou] 添加了 {songs.Count} 首歌曲来自第 {currentPage} 页，总计: {allSongs.Count}");
+
+                    // 如果当前页的歌曲数少于页面大小，或者已经获取了所有歌曲，则停止
+                    if (songs.Count < pageSize || allSongs.Count >= totalCount)
+                    {
+                        break;
+                    }
+
+                    currentPage++;
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"[Kugou] 获取歌单第 {currentPage} 页歌曲时出错: {ex.Message}");
+                    break;
+                }
+            }
+
+            Console.WriteLine($"[Kugou] 从歌单中获取到 {allSongs.Count} 首歌曲");
+            return allSongs;
         }
 
         private static LoginStatus ParseLoginStatus(JObject jo)
