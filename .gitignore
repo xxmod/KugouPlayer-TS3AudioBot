@@ -1,0 +1,32 @@
+## Build outputs
+bin/
+obj/
+*.dll
+*.exe
+*.pdb
+
+## IDE and user-specific
+.vs/
+.vscode/
+.idea/
+*.user
+*.suo
+*.rsuser
+*.sln.docstates
+
+## NuGet
+project.assets.json
+project.nuget.cache
+TS3AudioBot-KugouPlayer.csproj.nuget.*
+*.nupkg
+*.snupkg
+packages/
+
+## Logs and diagnostics
+*.log
+*.etl
+*.dmp
+
+## Publish profiles
+Properties/PublishProfiles/
+*.Publish.xml

@@ -18,7 +18,7 @@
 
 ### 1\. 下载文件
 
-* 从 [Releases](https://github.com/xxmod/KugouPlayer-TS3AudioBot/releases) 下载 `TS3AudioBot_KugouPlayer.dll` 文件
+* 从 [Release](https://github.com/xxmod/KugouPlayer-TS3AudioBot/releases) 下载 `TS3AudioBot_KugouPlayer.dll` 文件
 * 从 [KuGouMusicApi](https://github.com/MakcRe/KuGouMusicApi/releases) 下载音乐 API 服务
 
 ### 2\. 安装插件
@@ -51,6 +51,7 @@ cmd.kugou.vip
 ```
 
 显示形如
+
 ```
 All available plugins: 
 #0|+ON|BilibiliPlugin (BotPlugin) 
@@ -58,30 +59,23 @@ All available plugins:
 ```
 
 激活插件
+
 ```
 !plugin load 1
 ```
 
-
-
 ##### 部署方法二
-
-
 
 ### 1\.下载文件
 
-* 从[relese](https://github.com/xxmod/KugouPlayer-TS3AudioBot/releases)下载KugouPluginwithTS3Bot.zip
+* 从[Release](https://github.com/xxmod/KugouPlayer-TS3AudioBot/releases)下载KugouPluginwithTS3Bot.zip
 * 从[KuGouMusicApi](https://github.com/MakcRe/KuGouMusicApi/releases)下载API
-
-
 
 ### 2.解压打开TS3Audiobot
 
 这个版本已经内置插件并配置好了right.toml
 
 解压后打开TS3AudioBot.exe连接至服务器即可使用
-
-
 
 ## 使用方法
 
@@ -98,6 +92,7 @@ All available plugins:
 ```
 !kugou vip
 ```
+
 * 与login方法一致
 * 但是会在播放时优先使用vip的cookie
 * 达到可以用带vip的账号播放自己的音乐
@@ -179,4 +174,3 @@ All available plugins:
 * 登录状态会保存在用户数据目录
 * API 服务默认运行在 `http://localhost:3000`
 * 建议先登录账号以获得更好的音质和搜索结果
-

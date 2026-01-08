@@ -295,11 +295,11 @@
   "project": {
     "version": "1.0.0",
     "restore": {
-      "projectUniqueName": "D:\\Code\\KugouPlayer-TS3AudioBot\\plugins\\TS3AudioBot-KugouPlayer.csproj",
+      "projectUniqueName": "D:\\Code\\Project\\git\\KugouPlayer-TS3AudioBot\\TS3AudioBot-KugouPlayer.csproj",
       "projectName": "TS3AudioBot_KugouPlayer",
-      "projectPath": "D:\\Code\\KugouPlayer-TS3AudioBot\\plugins\\TS3AudioBot-KugouPlayer.csproj",
+      "projectPath": "D:\\Code\\Project\\git\\KugouPlayer-TS3AudioBot\\TS3AudioBot-KugouPlayer.csproj",
       "packagesPath": "C:\\Users\\30370\\.nuget\\packages\\",
-      "outputPath": "D:\\Code\\KugouPlayer-TS3AudioBot\\plugins\\obj\\",
+      "outputPath": "D:\\Code\\Project\\git\\KugouPlayer-TS3AudioBot\\obj\\",
       "projectStyle": "PackageReference",
       "configFilePaths": [
         "C:\\Users\\30370\\AppData\\Roaming\\NuGet\\NuGet.Config"
@@ -355,14 +355,6 @@
           {
             "name": "Microsoft.AspNetCore.App.Ref",
             "version": "[3.1.10, 3.1.10]"
-          },
-          {
-            "name": "Microsoft.NETCore.App.Ref",
-            "version": "[3.1.0, 3.1.0]"
-          },
-          {
-            "name": "Microsoft.WindowsDesktop.App.Ref",
-            "version": "[3.1.0, 3.1.0]"
           }
         ],
         "frameworkReferences": {
@@ -379,7 +371,7 @@
       "code": "NU1903",
       "level": "Warning",
       "warningLevel": 1,
-      "message": "包 \"Newtonsoft.Json\" 12.0.3 具有已知的 高 严重性漏洞，https://github.com/advisories/GHSA-5crp-9r3c-p9vr",
+      "message": "Package 'Newtonsoft.Json' 12.0.3 has a known high severity vulnerability, https://github.com/advisories/GHSA-5crp-9r3c-p9vr",
       "libraryId": "Newtonsoft.Json",
       "targetGraphs": [
         ".NETCoreApp,Version=v3.1"

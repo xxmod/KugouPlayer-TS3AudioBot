@@ -1,17 +1,17 @@
 {
   "format": 1,
   "restore": {
-    "D:\\Code\\KugouPlayer-TS3AudioBot\\plugins\\TS3AudioBot-KugouPlayer.csproj": {}
+    "D:\\Code\\Project\\git\\KugouPlayer-TS3AudioBot\\TS3AudioBot-KugouPlayer.csproj": {}
   },
   "projects": {
-    "D:\\Code\\KugouPlayer-TS3AudioBot\\plugins\\TS3AudioBot-KugouPlayer.csproj": {
+    "D:\\Code\\Project\\git\\KugouPlayer-TS3AudioBot\\TS3AudioBot-KugouPlayer.csproj": {
       "version": "1.0.0",
       "restore": {
-        "projectUniqueName": "D:\\Code\\KugouPlayer-TS3AudioBot\\plugins\\TS3AudioBot-KugouPlayer.csproj",
+        "projectUniqueName": "D:\\Code\\Project\\git\\KugouPlayer-TS3AudioBot\\TS3AudioBot-KugouPlayer.csproj",
         "projectName": "TS3AudioBot_KugouPlayer",
-        "projectPath": "D:\\Code\\KugouPlayer-TS3AudioBot\\plugins\\TS3AudioBot-KugouPlayer.csproj",
+        "projectPath": "D:\\Code\\Project\\git\\KugouPlayer-TS3AudioBot\\TS3AudioBot-KugouPlayer.csproj",
         "packagesPath": "C:\\Users\\30370\\.nuget\\packages\\",
-        "outputPath": "D:\\Code\\KugouPlayer-TS3AudioBot\\plugins\\obj\\",
+        "outputPath": "D:\\Code\\Project\\git\\KugouPlayer-TS3AudioBot\\obj\\",
         "projectStyle": "PackageReference",
         "configFilePaths": [
           "C:\\Users\\30370\\AppData\\Roaming\\NuGet\\NuGet.Config"
@@ -67,14 +67,6 @@
             {
               "name": "Microsoft.AspNetCore.App.Ref",
               "version": "[3.1.10, 3.1.10]"
-            },
-            {
-              "name": "Microsoft.NETCore.App.Ref",
-              "version": "[3.1.0, 3.1.0]"
-            },
-            {
-              "name": "Microsoft.WindowsDesktop.App.Ref",
-              "version": "[3.1.0, 3.1.0]"
             }
           ],
           "frameworkReferences": {

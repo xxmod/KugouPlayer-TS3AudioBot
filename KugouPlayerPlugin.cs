@@ -6,6 +6,7 @@ using System.Net.Http;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Security.Cryptography;
 using Newtonsoft.Json.Linq;
 // 这些命名空间与 TS3AudioBot/TS3Client 来自你的项目引用（和示例插件一致）
 using TS3AudioBot;
@@ -579,11 +580,10 @@ namespace KugouTs3Plugin
                 string modeDisplayText = isRandomMode ? "🔀随机" : "▶️顺序";
                 if (isRandomMode)
                 {
-                    // 使用 Fisher-Yates 洗牌算法打乱歌曲顺序
-                    var random = new Random();
+                    // 使用 Fisher-Yates 洗牌算法，索引由加密安全随机数生成器提供
                     for (int i = songs.Count - 1; i > 0; i--)
                     {
-                        int j = random.Next(0, i + 1);
+                        int j = RandomNumberGenerator.GetInt32(i + 1);
                         var temp = songs[i];
                         songs[i] = songs[j];
                         songs[j] = temp;

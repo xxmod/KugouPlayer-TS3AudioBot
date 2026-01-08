@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("TS3AudioBot_KugouPlayer")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+a256826a795ed1b783d73378d7f9abdc8956e259")]
 [assembly: System.Reflection.AssemblyProductAttribute("TS3AudioBot_KugouPlayer")]
 [assembly: System.Reflection.AssemblyTitleAttribute("TS3AudioBot_KugouPlayer")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]
