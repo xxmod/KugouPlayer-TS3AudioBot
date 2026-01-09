@@ -64,6 +64,21 @@ namespace KugouTs3Plugin
             Console.WriteLine($"[Kugou] Plugin initialized. API_Address = {API_Address}");
         }
 
+        [Command("kugou api")]
+        public string CommandApi(InvokerData invoker, string newAddress = null)
+        {
+            if (string.IsNullOrWhiteSpace(newAddress))
+                return $"当前 API 地址：{API_Address}\n用法：!kugou api http://127.0.0.1:3000";
+
+            string trimmed = newAddress.Trim().TrimEnd('/');
+            if (!Uri.TryCreate(trimmed, UriKind.Absolute, out _))
+                return "设置失败：请输入有效的完整地址，例如 http://127.0.0.1:3000";
+
+            API_Address = trimmed;
+            Console.WriteLine($"[Kugou] API_Address updated by {invoker.ClientUid}: {API_Address}");
+            return $"已更新 API 地址为：{API_Address}";
+        }
+
         // ============ 命令区 ============
 
         [Command("kugou search")]

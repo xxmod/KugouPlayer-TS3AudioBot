@@ -1,1 +1,1 @@
-dotnet build -c Release
+dotnet build TS3AudioBot-KugouPlayer.csproj -c Release
