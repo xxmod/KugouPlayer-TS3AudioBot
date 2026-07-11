@@ -119,6 +119,15 @@ namespace KugouTs3Plugin
                             var response = await http.SendAsync(request);
                             string content = await response.Content.ReadAsStringAsync();
                             Console.WriteLine($"[Kugou Refresh] 自动访问 [{Path.GetFileName(filePath)}] 状态码: {response.StatusCode}, 响应: {content}");
+                            
+                            if (response.StatusCode == System.Net.HttpStatusCode.BadGateway)
+                            {
+                                Console.WriteLine($"[Kugou Refresh] API 返回 502, 正在删除失效的 Token 文件: {Path.GetFileName(filePath)}");
+                                if (File.Exists(filePath))
+                                {
+                                    File.Delete(filePath);
+                                }
+                            }
                         }
                     }
                     catch (Exception ex)
