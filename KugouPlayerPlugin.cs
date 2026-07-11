@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -41,6 +41,8 @@ namespace KugouTs3Plugin
             Timeout = TimeSpan.FromSeconds(15),
         };
 
+        private System.Threading.Timer _tokenRefreshTimer;
+
         // 依赖注入（与示例插件一致）
         private readonly PlayManager playManager;
         private readonly Ts3Client ts3Client;
@@ -55,6 +57,7 @@ namespace KugouTs3Plugin
 
         public void Dispose()
         {
+            _tokenRefreshTimer?.Dispose();
             // 插件卸载时清理资源（这里用的是静态 HttpClient，不需要释放）
         }
 
@@ -62,6 +65,72 @@ namespace KugouTs3Plugin
         {
             // 插件加载时的初始化逻辑（可选）
             Console.WriteLine($"[Kugou] Plugin initialized. API_Address = {API_Address}");
+
+            // 设置每5小时自动刷新一次Token
+            _tokenRefreshTimer = new System.Threading.Timer(
+                async _ => await RefreshAllTokensAsync(),
+                null,
+                TimeSpan.FromHours(5),
+                TimeSpan.FromHours(5)
+            );
+        }
+
+        private async Task RefreshAllTokensAsync()
+        {
+            try
+            {
+                string dataDir = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+                if (!Directory.Exists(dataDir)) return;
+
+                // 查找所有保存的token文件
+                var tokenFiles = Directory.GetFiles(dataDir, "*Token.txt");
+                foreach (var filePath in tokenFiles)
+                {
+                    try
+                    {
+                        string rawCookies = File.ReadAllText(filePath).Trim();
+                        if (string.IsNullOrEmpty(rawCookies)) continue;
+
+                        string cookieString = CleanCookieString(rawCookies);
+                        if (string.IsNullOrEmpty(cookieString)) continue;
+
+                        // 提取 token
+                        string token = null;
+                        var parts = cookieString.Split(new[] { ';', ' ' }, StringSplitOptions.RemoveEmptyEntries);
+                        foreach (var part in parts)
+                        {
+                            if (part.StartsWith("token=", StringComparison.OrdinalIgnoreCase))
+                            {
+                                token = part.Substring("token=".Length);
+                                break;
+                            }
+                        }
+
+                        if (string.IsNullOrEmpty(token))
+                        {
+                            Console.WriteLine($"[Kugou Refresh] 未在文件 {Path.GetFileName(filePath)} 中找到 token 参数");
+                            continue;
+                        }
+
+                        string url = $"{API_Address.TrimEnd('/')}/login/token?token={token}";
+                        using (var request = new HttpRequestMessage(HttpMethod.Get, url))
+                        {
+                            request.Headers.Add("Cookie", cookieString);
+                            var response = await http.SendAsync(request);
+                            string content = await response.Content.ReadAsStringAsync();
+                            Console.WriteLine($"[Kugou Refresh] 自动访问 [{Path.GetFileName(filePath)}] 状态码: {response.StatusCode}, 响应: {content}");
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"[Kugou Refresh] 自动访问失败 [{Path.GetFileName(filePath)}]: {ex.Message}");
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[Kugou Refresh] 定时任务异常: {ex.Message}");
+            }
         }
 
         [Command("kugou api")]
